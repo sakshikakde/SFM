@@ -1,20 +1,36 @@
 import numpy as np
 
 def ExtractCameraPose(E):
+    """
+    Args:
+        E (array): Essential Matrix
+        K (array): Intrinsic Matrix
+    Returns:
+        arrays: set of Rotation and Camera Centers
+    """
 
-    W = np.array([[0,-1,0],[1,0,0],[0,0,-1]])
-    Z = np.array([[0,1,0],[-1,0,0],[0,0,0]])
+    ##UPDATE
+    U, S, V_T = np.linalg.svd(E)
+    W = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
 
-    U,S,VT = np.linalg.svd(E)
-    S = np.dot(U, np.dot(Z, U.T))
-    R1 = np.dot(U, np.dot(W, VT))
-    R2 = np.dot(U, np.dot(W.T, VT))
+    # print("E svd U", U)
+    # print("E svd S", S)
+    # print("E svd U[:, 2]", U[:, 2])
+    R = []
+    C = []
+    R.append(np.dot(U, np.dot(W, V_T)))
+    R.append(np.dot(U, np.dot(W, V_T)))
+    R.append(np.dot(U, np.dot(W.T, V_T)))
+    R.append(np.dot(U, np.dot(W.T, V_T)))
+    C.append(U[:, 2])
+    C.append(-U[:, 2])
+    C.append(U[:, 2])
+    C.append(-U[:, 2])
 
-    t = np.array([-S[1,2],S[0,2],-S[0,1]]).reshape(3,1)
-    
-    P1 = np.hstack((R1, t))
-    P2 = np.hstack((R1, -t))
-    P3 = np.hstack((R2, t))
-    P4 = np.hstack((R2, -t))
-    return [P1, P2, P3, P4]
+    for i in range(4):
+        if (np.linalg.det(R[i]) < 0):
+            R[i] = -R[i]
+            C[i] = -C[i]
+
+    return R, C
 

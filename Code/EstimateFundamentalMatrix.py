@@ -44,9 +44,11 @@ def EstimateFundamentalMatrix(features):
         s = np.diag(s)
         s[2,2] = 0
         F = np.dot(u, np.dot(s, vt))
+        
 
         if normalised:
             F = np.dot(T2.T, np.dot(F, T1))
+            F = F / F[2,2]
         return F
 
     else:
