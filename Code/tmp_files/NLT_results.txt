@@ -1,0 +1,18 @@
+
+
+
+Non Linear Triangulation Logs:
+
+0 1 :  Before Optimization:  41.38931272613464 After Optimization:  40.98978964067746
+0 2 :  Before Optimization:  94.69148963294157 After Optimization:  92.88568216275343
+0 3 :  Before Optimization:  261.4542120784101 After Optimization:  236.79855078405532
+1 2 :  Before Optimization:  1.8552149250932604 After Optimization:  1.8378322387701496
+1 3 :  Before Optimization:  20.8506763017668 After Optimization:  20.20519361217968
+2 3 :  Before Optimization:  0.4039090358606036 After Optimization:  0.4011000514903215
+2 4 :  Before Optimization:  61.30183508151159 After Optimization:  60.97252465464124
+2 5 :  Before Optimization:  73.21237873950216 After Optimization:  71.14018608864481
+3 4 :  Before Optimization:  28.69896214336119 After Optimization:  28.32802972454471
+3 5 :  Before Optimization:  25.905708121750248 After Optimization:  25.827058198996905
+4 5 :  Before Optimization:  18.441559088157717 After Optimization:  18.287972230350114
+
+(57.1095688976809, 54.33399267155493)

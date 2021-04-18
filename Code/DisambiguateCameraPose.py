@@ -6,11 +6,14 @@ def DisambiguatePose(r_set, c_set, x3D_set):
     
     for i in range(len(r_set)):
         R, C = r_set[i],  c_set[i].reshape(-1,1) 
-        r3 = R[2, :].reshape(1,-1)
+        r3 = R[2].reshape(1,-1)
+#         r3 = R[:, 2].reshape(1,-1)
         x3D = x3D_set[i]
         n_positive_depths = DepthPositivityConstraint(x3D, r3,C)
         if n_positive_depths > max_positive_depths:
             best_i = i
+            max_positive_depths = n_positive_depths
+            
 #         print(n_positive_depths, i, best_i)
 
     R, C, x3D = r_set[best_i], c_set[best_i], x3D_set[best_i]
