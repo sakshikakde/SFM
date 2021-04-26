@@ -154,7 +154,7 @@ def BundleAdjustment(X_all,X_found, feature_x, feature_y, filtered_feature_flag,
     
     A = bundle_adjustment_sparsity(X_found, filtered_feature_flag, nCam)
     t0 = time.time()
-    res = least_squares(fun, x0, jac_sparsity=A, verbose=2, x_scale='jac', ftol=1e-12, method='dogbox',
+    res = least_squares(fun, x0, jac_sparsity=A, verbose=2, x_scale='jac', ftol=1e-10, method='trf',
                         args=(nCam, n_points, camera_indices, point_indices, points_2d, K))
     t1 = time.time()
     print('time to run BA :', t1-t0, 's \nA matrix shape: ' ,  A.shape, '\n############')

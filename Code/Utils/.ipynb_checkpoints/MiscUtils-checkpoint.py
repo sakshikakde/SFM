@@ -1,6 +1,13 @@
+import cv2
 import numpy as np 
 from scipy.spatial.transform import Rotation 
+import os
 
+def foldercheck(Savepath):
+    if(not (os.path.isdir(Savepath))):
+        print(Savepath, "  was not present, creating the folder...")
+        os.makedirs(Savepath)
+        
 def project3DPoints(K, R, C, X, image, points):
     I = np.identity(3)
     P = np.dot(K, np.dot(R, np.hstack((I, -C.reshape(3,1)))))
