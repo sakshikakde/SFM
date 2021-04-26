@@ -2,6 +2,26 @@ import numpy as np
 
 from Utils.MiscUtils import ProjectionMatrix, homo
 
+def reprojectionErrorPnP(x3D, pts, K, R, C):
+    P = ProjectionMatrix(R,C,K)
+    
+    Error = []
+    for X, pt in zip(x3D, pts):
+
+        p_1T, p_2T, p_3T = P# rows of P
+        p_1T, p_2T, p_3T = p_1T.reshape(1,-1), p_2T.reshape(1,-1), p_3T.reshape(1,-1)
+        X = homo(X.reshape(1,-1)).reshape(-1,1) # make X it a column of homogenous vector
+        ## reprojection error for reference camera points 
+        u, v = pt[0], pt[1]
+        u_proj = np.divide(p_1T.dot(X) , p_3T.dot(X))
+        v_proj =  np.divide(p_2T.dot(X) , p_3T.dot(X))
+
+        E = np.square(v - v_proj) + np.square(u - u_proj)
+
+        Error.append(E)
+
+    mean_error = np.mean(np.array(Error).squeeze())
+    return mean_error
 
 def PnP(X_set, x_set, K):
     N = X_set.shape[0]
