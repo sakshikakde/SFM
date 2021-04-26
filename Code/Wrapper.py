@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+
 from EstimateFundamentalMatrix import *
 from GetInliersRANSAC import *
 from EssentialMatrixFromFundamentalMatrix import *
@@ -13,12 +14,15 @@ from BundleAdjustment import *
 from Utils.ImageUtils import *
 from Utils.DataLoader import *
 from Utils.MiscUtils import *
+
 from matplotlib import pyplot as plt
+from mpl_toolkits import mplot3d
+
 import scipy.optimize as optimize
 from scipy.sparse import lil_matrix
 import time
 from scipy.optimize import least_squares
-
+import argparse
 
 K = np.array([[568.996140852,             0,  643.21055941],
               [            0, 568.988362396, 477.982801038],
@@ -26,10 +30,26 @@ K = np.array([[568.996140852,             0,  643.21055941],
 
 def main():
     
-    load_data = True
-    BA = True
+    Parser = argparse.ArgumentParser()
+    Parser.add_argument('--DataPath', default="../Data/", help='base path where data files exist')
+    Parser.add_argument('--savepath', default="../outputs/", help='Save files here')
+    Parser.add_argument('--load_data', default= True, type = lambda x: bool(int(x)), help='load data from files or not')
+    Parser.add_argument('--BA', default= True, type = lambda x: bool(int(x)), help='Do bundle adjustment or not')
     
-    folder_name = "../Data/"
+    Args = Parser.parse_args()
+    folder_name = Args.DataPath
+    savepath = Args.savepath
+    load_data = bool(int(Args.load_data))
+    BA = bool(int(Args.BA))
+    
+    print(load_data, BA)
+#     load_data= True
+#     BA = False    
+#     folder_name = "../Data/"
+#     savepath = "../outputs_noBA/"
+    
+    foldercheck(savepath)
+    
     total_images = 6
     images = readImageSet(folder_name, total_images)
 
@@ -44,6 +64,7 @@ def main():
     
     
     if load_data:
+        print('Bypassing RANSAC inlier extraction, since filtered data is available')
         filtered_feature_flag = np.load('./tmp_files/filtered_feature_flag.npy', allow_pickle=True)
         f_matrix = np.load('./tmp_files/f_matrix.npy', allow_pickle=True)
     else:        
@@ -68,46 +89,49 @@ def main():
                     filtered_feature_flag[chosen_idx, i] = 1
                     
     ######################################## Obtained Feature points  ##########################################################
-        
+    ############################################################################################################################
+    
+    ##################### Compute Essential Matrix, Estimate Pose, Triangulate ###############
     """
     Register First two Images
     """      
     print('Registering images 1 and 2 ...... ')
+
     n,m = 0,1
     F12 = f_matrix[n,m]
     E12 = getEssentialMatrix(K, F12)
+    print('Estimating poses of Camera 2')
     R_set, C_set = ExtractCameraPose(E12)
 
     idx = np.where(filtered_feature_flag[:,n] & filtered_feature_flag[:,m])
     pts1 = np.hstack((feature_x[idx, n].reshape((-1, 1)), feature_y[idx, n].reshape((-1, 1))))
     pts2 = np.hstack((feature_x[idx, m].reshape((-1, 1)), feature_y[idx, m].reshape((-1, 1))))
 
-    R1 = np.identity(3)
-    C1 = np.zeros((3,1))
+    R1_ = np.identity(3)
+    C1_ = np.zeros((3,1))
     I = np.identity(3)
     pts3D_4 = []
     for i in range(len(C_set)):
         pts3D = []
         x1 = pts1
         x2 = pts2
-        X = LinearTriangulation(K, C1, R1, C_set[i], R_set[i], x1, x2)
+        X = LinearTriangulation(K, C1_, R1_, C_set[i], R_set[i], x1, x2)
         X = X/X[:,3].reshape(-1,1)
         pts3D_4.append(X)
 
     R_chosen, C_chosen, X = DisambiguatePose(R_set, C_set, pts3D_4)
     X = X/X[:,3].reshape(-1,1)
-    print(' Poses Estimated')
-    X_refined = NonLinearTriangulation(K, pts1, pts2, X, R1, C1, R_chosen, C_chosen)
+    print('Done ### ')
+    print('Performing NonLinear Triangulation...')
+    X_refined = NonLinearTriangulation(K, pts1, pts2, X, R1_, C1_, R_chosen, C_chosen)
     X_refined = X_refined / X_refined[:,3].reshape(-1,1)
-    print(' 3D points Estimated')
-    mean_error1 = meanReprojectionError(X, pts1, pts2, R1, C1, R_chosen, C_chosen, K )
-    mean_error2 = meanReprojectionError(X_refined, pts1, pts2, R1, C1, R_chosen, C_chosen, K )
-
-    print('Before optimization: ', mean_error1, 'After optimization :', mean_error2)
-
-
-    ############################################################################################################
-    ######################################## Register Camera 1 and 2  ##########################################
+    
+    mean_error1 = meanReprojectionError(X, pts1, pts2, R1_, C1_, R_chosen, C_chosen, K )
+    mean_error2 = meanReprojectionError(X_refined, pts1, pts2, R1_, C1_, R_chosen, C_chosen, K )
+    print(n+1,m+1, 'Before optimization LT: ', mean_error1, 'After optimization nLT:', mean_error2)
+    print('Done ### ')
+    ########################################################################################
+    ###################### Register Camera 1 and 2  #########################################
 
     X_all = np.zeros((feature_x.shape[0], 3))
     camera_indices = np.zeros((feature_x.shape[0], 1), dtype = int) 
@@ -132,10 +156,9 @@ def main():
     C_set_.append(C_chosen)
     R_set_.append(R_chosen)
     print(' #####################  Registered Cameras 1 and 2 #####################' )
-    ############################################################################################################
-    ######################################## Registering Remaining images  #####################################
+    ########################################################################################
+    ###################### Register Remaining Cameras  #####################################
     print('Registering remaining Images ......')
-    
     for i in range(2, total_images):
         print('Registering Image: ', str(i+1) ,'......')
         feature_idx_i = np.where(X_found[:, 0] & filtered_feature_flag[:, i])
@@ -164,60 +187,180 @@ def main():
 
             X = LinearTriangulation(K, C_set_[j], R_set_[j], Ci, Ri, x1, x2)
             X = X/X[:,3].reshape(-1,1)
+            
+            LT_error = meanReprojectionError(X, x1, x2, R_set_[j], C_set_[j], Ri, Ci, K)
+            PnP_error = meanReprojectionError(X, x1, x2, R_set_[j], C_set_[j], R_init, C_init, K)
+            print(i+1, j+1, '|| Before PnP optimization: ', PnP_error, 'After PnP optimization :', LT_error)        
+            
             X = NonLinearTriangulation(K, x1, x2, X, R_set_[j], C_set_[j], Ri, Ci)
             X = X/X[:,3].reshape(-1,1)
-
+            
+            nLT_error = meanReprojectionError(X, x1, x2, R_set_[j], C_set_[j], Ri, Ci, K)
+            print(i+1,j+1, '|| Before LT optimization: ', LT_error, 'After NLT optimization :', nLT_error)
 
             X_all[idx_X_pts] = X[:,:3]
             X_found[idx_X_pts] = 1
-
-            print("    - appended ", len(idx_X_pts[0]), " points between ", j+1 ," and ", i+1)
-
+            
+            print("appended ", len(idx_X_pts[0]), " points between ", j ," and ", i)
         if BA:
             print( 'Performing Bundle Adjustment  for image : ', i  )
-            R_set_, C_set_, X_all = BundleAdjustment(X_all,X_found, feature_x, feature_y, filtered_feature_flag, R_set_, C_set_, K, nCam = i)
-        print('##################### Registered Camera : ', i+1, '######################')
+            R_set_, C_set_, X_all = BundleAdjustment(X_all,X_found, feature_x, feature_y,
+                                                     filtered_feature_flag, R_set_, C_set_, K, nCam = i)
         
-    np.save('./tmp_files/optimized_C_set_', C_set_)
-    np.save('./tmp_files/optimized_R_set_', R_set_)
-    np.save('./tmp_files/optimized_X_all', X_all)
-    np.save('./tmp_files/optimized_X_found', X_found)
+            for j in range(0, i):
+                idx_X_pts = np.where(X_found[:,0] & filtered_feature_flag[:, j] & filtered_feature_flag[:, i])
+                x1 = np.hstack((feature_x[idx_X_pts, j].reshape((-1, 1)), feature_y[idx_X_pts, j].reshape((-1, 1))))
+                x2 = np.hstack((feature_x[idx_X_pts, i].reshape((-1, 1)), feature_y[idx_X_pts, i].reshape((-1, 1))))
+                X = X_all[idx_X_pts]
+                BA_error = meanReprojectionError(homo(X), x1, x2, R_set_[j], C_set_[j], R_set_[i], C_set_[i], K)
+                print(i+1, j+1, '| Error after BA :', BA_error)
+        
+        print('##################### Registered Camera : ', i+1, '######################')
+    X_found[X_all[:,2]<0] = 0    
+    print('##########################################################################')
+    
+    np.save(savepath+'optimized_C_set_', C_set_)
+    np.save(savepath+'optimized_R_set_', R_set_)
+    np.save(savepath+'optimized_X_all', X_all)
+    np.save(savepath+'optimized_X_found', X_found)
     
     
     feature_idx = np.where(X_found[:, 0])
     X = X_all[feature_idx]
-
     x = X[:,0]
     y = X[:,1]
     z = X[:,2]
-
-    x[(x < -500) | (x > 500)] = 0 
-    y[(y < -500) | (y > 500)] = 0 
-    z[(z <= 0) | (z > 500)] = 0
-
-    plt.xlim(-250,  250)
-    plt.ylim(0,  500)
-    plt.set_xlabel('x')
-    plt.set_ylabel('z')
-    plt.scatter(x, z, marker='.',linewidths=0.5, color = 'blue')
-    plt.show()
-    plt.savefig('2D.png')
-
-    # For 3D plotting
-    ax = plt.axes(projection='3d')
-
-    # Data for three-dimensional scattered points
-    ax.scatter3D(x,y,z, s=1)  # cmap='viridis',
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
-    ax.set_xlim([-250,  250])
-    ax.set_ylim([-250,  250])
-    ax.set_zlim([0,  500])
-    plt.show()
-    plt.savefig('3D.png')
+#     x[(x < -500) | (x > 500)] = 0 
+#     y[(x < -500) | (x > 500)] = 0 
+#     z[(z <= 0) | (z > 500)] = 0
     
+    # 2D plotting
+    fig = plt.figure(figsize = (10, 10))
+    plt.xlim(-250,  250)
+    plt.ylim(-100,  500)
+    plt.scatter(x, z, marker='.',linewidths=0.5, color = 'blue')
+    for i in range(0, len(C_set_)):
+        R1 = getEuler(R_set_[i])
+        R1 = np.rad2deg(R1)
+        plt.plot(C_set_[i][0],C_set_[i][2], marker=(3, 0, int(R1[1])), markersize=15, linestyle='None')
+        
+    plt.savefig(savepath+'2D.png')
+    plt.show()
+    
+    # For 3D plotting
+    fig = plt.figure(figsize = (10, 10))
+    ax = plt.axes(projection ="3d")
+    # Creating plot
+    ax.scatter3D(x, y, z, color = "green")
+    plt.show()
+    plt.savefig(savepath+'3D.png')
     
 if __name__ == '__main__':
     main()
- 
+         
+#     n,m = 0,1
+#     F12 = f_matrix[n,m]
+#     E12 = getEssentialMatrix(K, F12)
+#     R_set, C_set = ExtractCameraPose(E12)
+
+#     idx = np.where(filtered_feature_flag[:,n] & filtered_feature_flag[:,m])
+#     pts1 = np.hstack((feature_x[idx, n].reshape((-1, 1)), feature_y[idx, n].reshape((-1, 1))))
+#     pts2 = np.hstack((feature_x[idx, m].reshape((-1, 1)), feature_y[idx, m].reshape((-1, 1))))
+
+#     R1 = np.identity(3)
+#     C1 = np.zeros((3,1))
+#     I = np.identity(3)
+#     pts3D_4 = []
+#     for i in range(len(C_set)):
+#         pts3D = []
+#         x1 = pts1
+#         x2 = pts2
+#         X = LinearTriangulation(K, C1, R1, C_set[i], R_set[i], x1, x2)
+#         X = X/X[:,3].reshape(-1,1)
+#         pts3D_4.append(X)
+
+#     R_chosen, C_chosen, X = DisambiguatePose(R_set, C_set, pts3D_4)
+#     X = X/X[:,3].reshape(-1,1)
+#     print(' Poses Estimated')
+#     X_refined = NonLinearTriangulation(K, pts1, pts2, X, R1, C1, R_chosen, C_chosen)
+#     X_refined = X_refined / X_refined[:,3].reshape(-1,1)
+#     print(' 3D points Estimated')
+#     mean_error1 = meanReprojectionError(X, pts1, pts2, R1, C1, R_chosen, C_chosen, K )
+#     mean_error2 = meanReprojectionError(X_refined, pts1, pts2, R1, C1, R_chosen, C_chosen, K )
+
+#     print('Before optimization: ', mean_error1, 'After optimization :', mean_error2)
+
+
+#     ############################################################################################################
+#     ######################################## Register Camera 1 and 2  ##########################################
+
+#     X_all = np.zeros((feature_x.shape[0], 3))
+#     camera_indices = np.zeros((feature_x.shape[0], 1), dtype = int) 
+#     X_found = np.zeros((feature_x.shape[0], 1), dtype = int)
+
+#     X_all[idx] = X[:, :3]
+#     X_found[idx] = 1
+#     camera_indices[idx] = 1
+
+#     # print(np.nonzero(X_found[idx])[0].shape)
+#     X_found[np.where(X_all[:,2] < 0)] = 0
+#     # print(len(idx[0]), '--' ,np.nonzero(X_found[idx])[0].shape)
+
+#     C_set_ = []
+#     R_set_ = []
+
+#     C0 = np.zeros(3)
+#     R0 = np.identity(3)
+#     C_set_.append(C0)
+#     R_set_.append(R0)
+
+#     C_set_.append(C_chosen)
+#     R_set_.append(R_chosen)
+#     print(' #####################  Registered Cameras 1 and 2 #####################' )
+#     ############################################################################################################
+#     ######################################## Registering Remaining images  #####################################
+#     print('Registering remaining Images ......')
+    
+#     for i in range(2, total_images):
+#         print('Registering Image: ', str(i+1) ,'......')
+#         feature_idx_i = np.where(X_found[:, 0] & filtered_feature_flag[:, i])
+#         if len(feature_idx_i[0]) < 8:
+#             print("Found ", len(feature_idx_i), "common points between X and ", i, " image")
+#             continue
+
+#         pts_i = np.hstack((feature_x[feature_idx_i, i].reshape(-1,1), feature_y[feature_idx_i, i].reshape(-1,1)))
+#         X = X_all[feature_idx_i, :].reshape(-1,3)
+#         #PnP
+#         R_init, C_init = PnPRANSAC(K, pts_i, X, n_iterations = 1000, error_thresh = 5)
+#         Ri, Ci = NonLinearPnP(K, pts_i, X, R_init, C_init)
+
+#         C_set_.append(Ci)
+#         R_set_.append(Ri)
+
+#         #trianglulation
+#         for j in range(0, i):
+#             # idx_X_pts = np.where(X_found[:, 0] & filtered_feature_flag[:, j] & filtered_feature_flag[:, i])
+#             idx_X_pts = np.where(filtered_feature_flag[:, j] & filtered_feature_flag[:, i])
+#             if (len(idx_X_pts[0]) < 8):
+#                 continue
+
+#             x1 = np.hstack((feature_x[idx_X_pts, j].reshape((-1, 1)), feature_y[idx_X_pts, j].reshape((-1, 1))))
+#             x2 = np.hstack((feature_x[idx_X_pts, i].reshape((-1, 1)), feature_y[idx_X_pts, i].reshape((-1, 1))))
+
+#             X = LinearTriangulation(K, C_set_[j], R_set_[j], Ci, Ri, x1, x2)
+#             X = X/X[:,3].reshape(-1,1)
+#             X = NonLinearTriangulation(K, x1, x2, X, R_set_[j], C_set_[j], Ri, Ci)
+#             X = X/X[:,3].reshape(-1,1)
+
+
+#             X_all[idx_X_pts] = X[:,:3]
+#             X_found[idx_X_pts] = 1
+
+#             print("    - appended ", len(idx_X_pts[0]), " points between ", j+1 ," and ", i+1)
+#         print('##################### Registered Camera : ', i+1, '######################')
+        
+#     if BA:
+#         print( 'Performing Bundle Adjustment  for all images'  )
+#         R_set_, C_set_, X_all = BundleAdjustment(X_all,X_found, feature_x, feature_y, filtered_feature_flag, R_set_, C_set_, K, nCam = i)
+# #         print('##################### Registered Camera : ', i+1, '######################')
+        
