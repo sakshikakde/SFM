@@ -35,5 +35,5 @@ Please refer the [report](https://github.com/sakshikakde/SFM/blob/master/Report-
 ![Result image](https://github.com/sakshikakde/SFM/blob/master/images/result.png)
 
 
-## References
+## Assignment link
 https://cmsc733.github.io/2019/proj/p3/
