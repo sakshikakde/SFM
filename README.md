@@ -28,7 +28,7 @@ Please refer the [report](https://github.com/sakshikakde/SFM/blob/master/Report-
 ## Parameters
 1) `--DataPath`: the path where the data is stored
 2) `--savepath`: the path to folder where the output will be saved
-3) `--BA`: True-If we wanrt to use bundle adjustment
+3) `--BA`: True-If we want to use bundle adjustment
 
 ## Result
 
